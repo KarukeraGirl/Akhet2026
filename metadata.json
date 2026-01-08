@@ -1,0 +1,7 @@
+{
+  "name": "Akhet - 2026 Horizon Tracker",
+  "description": "A comprehensive Ancient Egyptian-themed goal tracking application for the year 2026, featuring financial, health, sport, travel, and knowledge management with a monthly calendar view and reward system.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
