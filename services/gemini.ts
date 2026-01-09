@@ -44,8 +44,28 @@ export const extractIsbnFromImage = async (base64Data: string) => {
   const result = response.text?.trim();
   if (!result || result.toLowerCase().includes('null')) return null;
   const cleaned = result.replace(/[^0-9]/g, '');
-  return cleaned.length >= 10 ? cleaned : null;
+
+  if (cleaned.length === 13 && (cleaned.startsWith('978') || cleaned.startsWith('979'))) {
+    return cleaned;
+  }
+  if (cleaned.length === 10) {
+    return cleaned;
+  }
+
+  // Fallback for cases where the model might return a valid ISBN but with extra text.
+  const isbn13Match = result.match(/(978|979)\d{10}/);
+  if (isbn13Match) {
+    return isbn13Match[0];
+  }
+  
+  const isbn10Match = result.match(/\b\d{10}\b/);
+  if (isbn10Match) {
+      return isbn10Match[0];
+  }
+
+  return null;
 };
+
 
 export const getBookDetails = async (isbn: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
