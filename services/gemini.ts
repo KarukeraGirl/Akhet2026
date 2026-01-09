@@ -36,13 +36,13 @@ export const extractIsbnFromImage = async (base64Data: string) => {
         }
       },
       {
-        text: "Examine cette image. Trouve le numéro ISBN-13 du livre (commence presque toujours par 978 ou 979). Ignore les codes de prix, les étiquettes de bibliothèque ou les numéros de série. Retourne UNIQUEMENT les 13 chiffres. Si aucun ISBN n'est visible, réponds 'null'."
+        text: "Analyse cette image de couverture ou de quatrième de couverture de livre. Localise le code-barres ou le texte ISBN. Trouve spécifiquement le numéro ISBN-13 (souvent 978... ou 979...). Ignore les prix et autres codes. Retourne UNIQUEMENT les 13 chiffres sans espaces ni tirets. Si l'ISBN n'est pas clairement lisible ou absent, réponds par 'null'."
       }
     ]
   });
 
   const result = response.text?.trim();
-  if (!result || result === 'null') return null;
+  if (!result || result.toLowerCase().includes('null')) return null;
   const cleaned = result.replace(/[^0-9]/g, '');
   return cleaned.length >= 10 ? cleaned : null;
 };
@@ -50,12 +50,12 @@ export const extractIsbnFromImage = async (base64Data: string) => {
 export const getBookDetails = async (isbn: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Instruction stricte pour utiliser des APIs d'images fiables (Open Library ou Google Books)
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Trouve le titre et l'auteur exact pour l'ISBN : ${isbn}. 
-    Pour la coverUrl, utilise PRIORITAIREMENT ce format : https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg. 
-    Vérifie via Google Search si le livre existe bien et si les infos correspondent.`,
+    contents: `Recherche les détails précis du livre avec l'ISBN : ${isbn}. 
+    Utilise Google Search pour confirmer les informations. 
+    Retourne les données au format JSON. 
+    L'URL de l'image doit être fonctionnelle (OpenLibrary ou Google Books).`,
     config: {
       tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
@@ -64,17 +64,53 @@ export const getBookDetails = async (isbn: string) => {
         properties: {
           title: { type: Type.STRING },
           author: { type: Type.STRING },
-          coverUrl: { type: Type.STRING, description: "URL de la couverture (OpenLibrary ou Google Books)" },
+          coverUrl: { type: Type.STRING, description: "URL directe de l'image de couverture" },
+          isbn: { type: Type.STRING },
+          found: { type: Type.BOOLEAN, description: "Indique si le livre a été trouvé avec certitude" }
         },
-        required: ["title", "author", "coverUrl"]
+        required: ["title", "author", "coverUrl", "found", "isbn"]
       }
     }
   });
 
   try {
-    return JSON.parse(response.text);
+    const data = JSON.parse(response.text);
+    return data.found ? data : null;
   } catch (e) {
     console.error("Erreur de parsing des détails du livre", e);
+    return null;
+  }
+};
+
+export const searchBookByText = async (query: string) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Trouve le livre correspondant le mieux à la recherche : "${query}".
+    Cherche le titre exact, l'auteur principal et son numéro ISBN-13.
+    L'URL de l'image doit être de haute qualité (Google Books, Amazon ou OpenLibrary).`,
+    config: {
+      tools: [{ googleSearch: {} }],
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          author: { type: Type.STRING },
+          coverUrl: { type: Type.STRING },
+          isbn: { type: Type.STRING },
+          found: { type: Type.BOOLEAN }
+        },
+        required: ["title", "author", "coverUrl", "found", "isbn"]
+      }
+    }
+  });
+
+  try {
+    const data = JSON.parse(response.text);
+    return data.found ? data : null;
+  } catch (e) {
     return null;
   }
 };
@@ -110,7 +146,7 @@ export const getCountryVisuals = async (country: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Donne moi le code pays ISO (2 lettres) et une description d'une image iconique pour le pays : ${country}.`,
+    contents: `Donne moi le code pays ISO (2 lettres), une description d'une image iconique et les coordonnées GPS centrales (lat/lng) pour le pays : ${country}.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -118,8 +154,10 @@ export const getCountryVisuals = async (country: string) => {
         properties: {
           code: { type: Type.STRING },
           imageUrl: { type: Type.STRING },
+          lat: { type: Type.NUMBER },
+          lng: { type: Type.NUMBER }
         },
-        required: ["code", "imageUrl"]
+        required: ["code", "imageUrl", "lat", "lng"]
       }
     }
   });
@@ -127,6 +165,6 @@ export const getCountryVisuals = async (country: string) => {
   try {
     return JSON.parse(response.text);
   } catch (e) {
-    return { code: 'FR', imageUrl: 'https://picsum.photos/800/600' };
+    return { code: 'FR', imageUrl: 'https://picsum.photos/800/600', lat: 46.2276, lng: 2.2137 };
   }
 };

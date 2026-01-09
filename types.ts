@@ -14,6 +14,7 @@ export interface Book {
 }
 
 export type TravelStatus = 'À organiser' | 'Organisé' | 'Effectué' | 'Annulé' | 'Reporté';
+export type TravelMotive = 'Vacances' | 'Sport' | 'Autre';
 
 export interface Trip {
   id: string;
@@ -22,8 +23,12 @@ export interface Trip {
   flagUrl: string;
   bgImageUrl: string;
   status: TravelStatus;
+  motive: TravelMotive;
+  duration: number;
+  startDate: string;
   comment: string;
-  date?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export type CertificationStatus = 'À réaliser' | 'En cours' | 'Examen planifié' | 'Réussie' | 'Échouée';

@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight,
   TrendingUp, Activity, Map as MapIcon, GraduationCap,
   Plus, CheckCircle, Circle, Trash2, Camera, Sun,
-  Save, Download, Upload, Trash
+  Save, Download, Upload, Trash, PiggyBank, BookOpen, Dumbbell, Sparkles
 } from 'lucide-react';
 import { CATEGORIES, MONTHS, INITIAL_REWARDS } from './constants';
 import { Category, Goal, Book, Trip, Reward, Certification, IoTProject, Training, ActiveWatch, WeeklyRun, GymSession, RunSlot } from './types';
@@ -57,6 +57,10 @@ const App: React.FC = () => {
   const [rewards, setRewards] = useState<Reward[]>(INITIAL_REWARDS);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
+  
+  // Celebration State
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [hasCelebratedFirst, setHasCelebratedFirst] = useState(() => localStorage.getItem('akhet_celebrated_first') === 'true');
 
   // Persistent Sync Effect
   useEffect(() => {
@@ -71,6 +75,18 @@ const App: React.FC = () => {
     localStorage.setItem('akhet_darebeeUrl', JSON.stringify(darebeeUrl));
     localStorage.setItem('akhet_activeWatches', JSON.stringify(activeWatches));
   }, [goals, books, trips, certifications, trainings, iotProjects, weeklyRuns, gymSessions, darebeeUrl, activeWatches]);
+
+  // Logic to detect first goal ever
+  useEffect(() => {
+    if (!hasCelebratedFirst) {
+      const completedCount = goals.filter(g => g.completed).length;
+      if (completedCount === 1) {
+        setShowCelebration(true);
+        setHasCelebratedFirst(true);
+        localStorage.setItem('akhet_celebrated_first', 'true');
+      }
+    }
+  }, [goals, hasCelebratedFirst]);
 
   // Initialize recurring goals for each month if goals are empty
   useEffect(() => {
@@ -267,40 +283,98 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#121212] text-gray-200 overflow-hidden hieroglyph-bg">
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1a1a1a] border-r border-[#d4af37]/20 transform transition-transform duration-300 lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-10 h-10 bg-[#d4af37] rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.4)] text-xl">🌅</div>
-            <h1 className="egyptian-font text-2xl font-bold text-[#d4af37]">AKHET</h1>
+    <div className="flex flex-col h-screen bg-[#121212] text-gray-200 overflow-hidden hieroglyph-bg">
+      {/* Celebration Overlay */}
+      {showCelebration && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fadeIn">
+          <div className="relative max-w-lg w-full p-8 text-center space-y-8 animate-scaleUp">
+            <div className="relative mx-auto w-32 h-32 flex items-center justify-center">
+               <div className="absolute inset-0 bg-[#d4af37] rounded-full animate-ping opacity-20"></div>
+               <div className="absolute inset-0 bg-gradient-to-tr from-[#d4af37] to-[#f0e68c] rounded-full shadow-[0_0_50px_rgba(212,175,55,0.6)] flex items-center justify-center">
+                 <Sun size={64} className="text-black animate-pulse" />
+               </div>
+            </div>
+            
+            <div className="space-y-4">
+              <h2 className="egyptian-font text-3xl text-[#d4af37] leading-tight">Le Premier Rayon de l'Horizon a jailli !</h2>
+              <p className="text-gray-400 text-sm leading-relaxed italic">
+                "Celui qui déplace une montagne commence par enlever les petites pierres." <br/>
+                Votre voyage vers l'équilibre et la Maât vient de franchir son premier seuil sacré.
+              </p>
+            </div>
+            
+            <button 
+              onClick={() => setShowCelebration(false)}
+              className="px-10 py-4 bg-[#d4af37] text-black font-black rounded-full uppercase tracking-widest text-xs hover:scale-110 active:scale-95 transition-all shadow-xl shadow-[#d4af37]/20"
+            >
+              Poursuivre ma quête
+            </button>
+            
+            <div className="flex justify-center gap-1">
+              {[...Array(5)].map((_, i) => (
+                <Sparkles key={i} className="text-[#d4af37]/40" size={12} />
+              ))}
+            </div>
           </div>
-          <nav className="space-y-1">
-            <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
-            <NavItem icon={<CalendarIcon size={20} />} label="Calendrier" active={activeTab === 'calendar'} onClick={() => { setActiveTab('calendar'); setIsSidebarOpen(false); }} />
-            <div className="pt-6 pb-2 text-xs font-semibold text-[#d4af37]/60 uppercase tracking-widest px-4">Rubriques</div>
-            {CATEGORIES.map(cat => (
-              <NavItem key={cat.name} icon={cat.icon} label={cat.name} active={activeTab === cat.name} onClick={() => { setActiveTab(cat.name); setIsSidebarOpen(false); }} />
-            ))}
-            <div className="pt-6 pb-2 text-xs font-semibold text-gray-600 uppercase tracking-widest px-4">Système</div>
-            <NavItem icon={<Settings size={20} />} label="Paramètres" active={activeTab === 'settings'} onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }} />
-          </nav>
         </div>
-      </aside>
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 flex items-center justify-between px-6 bg-[#1a1a1a]/80 backdrop-blur-md border-b border-[#d4af37]/10 sticky top-0 z-40">
-          <button className="lg:hidden p-2 text-[#d4af37]" onClick={() => setIsSidebarOpen(true)}><Menu size={24} /></button>
-          <div className="flex-1 flex justify-center lg:justify-start lg:ml-4">
-            <h2 className="text-lg font-medium text-gray-400">
-              {activeTab === 'dashboard' ? "Vue d'ensemble 2026" : activeTab === 'settings' ? "Paramètres des Archives" : activeTab}
-            </h2>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar - Desktop only */}
+        <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1a1a1a] border-r border-[#d4af37]/20 transform transition-transform duration-300 lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="p-6 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#d4af37] rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.4)] text-xl">🌅</div>
+                <h1 className="egyptian-font text-2xl font-bold text-[#d4af37]">AKHET</h1>
+              </div>
+              <button className="lg:hidden p-2 text-gray-500" onClick={() => setIsSidebarOpen(false)}><X size={20}/></button>
+            </div>
+            <nav className="space-y-1 flex-1 overflow-y-auto">
+              <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
+              <NavItem icon={<CalendarIcon size={20} />} label="Calendrier" active={activeTab === 'calendar'} onClick={() => { setActiveTab('calendar'); setIsSidebarOpen(false); }} />
+              <div className="pt-6 pb-2 text-xs font-semibold text-[#d4af37]/60 uppercase tracking-widest px-4">Rubriques</div>
+              {CATEGORIES.map(cat => (
+                <NavItem key={cat.name} icon={cat.icon} label={cat.name} active={activeTab === cat.name} onClick={() => { setActiveTab(cat.name); setIsSidebarOpen(false); }} />
+              ))}
+              <div className="pt-6 pb-2 text-xs font-semibold text-gray-600 uppercase tracking-widest px-4">Système</div>
+              <NavItem icon={<Settings size={20} />} label="Paramètres" active={activeTab === 'settings'} onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }} />
+            </nav>
           </div>
-          <div className="flex items-center gap-4">
-            <button className="p-2 text-gray-400 hover:text-[#d4af37] transition-colors relative"><Bell size={20} />{notifications.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}</button>
-            <div className="flex items-center gap-2 bg-[#d4af37]/10 px-3 py-1 rounded-full border border-[#d4af37]/30"><Gift size={16} className="text-[#d4af37]" /><span className="text-sm font-bold text-[#d4af37]">{rewards.filter(r => r.unlocked).length}</span></div>
+        </aside>
+
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <header className="h-16 flex items-center justify-between px-4 lg:px-6 bg-[#1a1a1a]/80 backdrop-blur-md border-b border-[#d4af37]/10 sticky top-0 z-40">
+            <button className="lg:hidden p-2 text-[#d4af37]" onClick={() => setIsSidebarOpen(true)}><Menu size={24} /></button>
+            <div className="flex-1 flex justify-center lg:justify-start lg:ml-4">
+              <h2 className="text-sm md:text-lg font-bold text-gray-400 uppercase tracking-widest">
+                {activeTab === 'dashboard' ? "Vue d'ensemble" : activeTab === 'settings' ? "Paramètres" : activeTab}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2 md:gap-4">
+              <button className="p-2 text-gray-400 hover:text-[#d4af37] transition-colors relative"><Bell size={20} />{notifications.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}</button>
+              <div className="flex items-center gap-2 bg-[#d4af37]/10 px-3 py-1 rounded-full border border-[#d4af37]/30">
+                <Gift size={16} className="text-[#d4af37]" />
+                <span className="text-sm font-bold text-[#d4af37]">{rewards.filter(r => r.unlocked).length}</span>
+              </div>
+            </div>
+          </header>
+          
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-egyptian-pattern pb-24 lg:pb-8">
+            {renderContent()}
           </div>
-        </header>
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8 bg-egyptian-pattern">{renderContent()}</div>
-      </main>
+        </main>
+      </div>
+
+      {/* Bottom Navigation - Mobile only */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1a1a1a] border-t border-[#d4af37]/20 flex items-center justify-around px-2 z-50 backdrop-blur-lg">
+        <BottomNavItem icon={<LayoutDashboard size={24} />} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+        <BottomNavItem icon={<CalendarIcon size={24} />} active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} />
+        <BottomNavItem icon={<Dumbbell size={24} />} active={activeTab === 'Sport'} onClick={() => setActiveTab('Sport')} />
+        <BottomNavItem icon={<PiggyBank size={24} />} active={activeTab === 'Finance'} onClick={() => setActiveTab('Finance')} />
+        <BottomNavItem icon={<Menu size={24} />} active={isSidebarOpen} onClick={() => setIsSidebarOpen(true)} />
+      </div>
+
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
     </div>
   );
@@ -308,6 +382,12 @@ const App: React.FC = () => {
 
 const NavItem: React.FC<{ icon: React.ReactNode; label: string; active: boolean; onClick: () => void }> = ({ icon, label, active, onClick }) => (
   <button onClick={onClick} className={`w-full flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 ${active ? 'bg-[#d4af37]/20 text-[#d4af37] border-l-4 border-[#d4af37]' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}>{icon}<span className="font-medium">{label}</span></button>
+);
+
+const BottomNavItem: React.FC<{ icon: React.ReactNode; active: boolean; onClick: () => void }> = ({ icon, active, onClick }) => (
+  <button onClick={onClick} className={`p-3 rounded-xl transition-all ${active ? 'text-[#d4af37] bg-[#d4af37]/10' : 'text-gray-500'}`}>
+    {icon}
+  </button>
 );
 
 export default App;
