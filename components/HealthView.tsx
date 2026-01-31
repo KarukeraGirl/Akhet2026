@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Goal, Reward } from '../types';
 import { MONTHS } from '../constants';
-import { HeartPulse, CheckCircle2, Circle, Apple, Stethoscope, Droplet, User, Eye, Pill, Calendar as CalendarIcon, Trophy, Plus, Trash2 } from 'lucide-react';
+import { HeartPulse, CheckCircle2, Circle, Apple, Stethoscope, Droplet, Calendar as CalendarIcon, Trophy, Plus, Trash2, CalendarPlus } from 'lucide-react';
 
 interface Props {
   goals: Goal[];
@@ -33,6 +33,28 @@ const HealthView: React.FC<Props> = ({ goals, toggleGoal, updateGoalDate, update
       type: 'once'
     });
     setCustomTitle('');
+  };
+
+  const exportToGoogleCalendar = (goal: Goal) => {
+    const year = 2026;
+    const month = goal.month.toString().padStart(2, '0');
+    const day = (goal.day || 1).toString().padStart(2, '0');
+    
+    // Construct dates in YYYYMMDD format for all-day event
+    const startDate = `${year}${month}${day}`;
+    // For an all-day event, the end date must be the next day
+    const endDateObj = new Date(year, goal.month - 1, (goal.day || 1) + 1);
+    const endYear = endDateObj.getFullYear();
+    const endMonth = (endDateObj.getMonth() + 1).toString().padStart(2, '0');
+    const endDay = endDateObj.getDate().toString().padStart(2, '0');
+    const endDate = `${endYear}${endMonth}${endDay}`;
+
+    const title = encodeURIComponent(`Akhet : Journée de jeûne`);
+    const details = encodeURIComponent(`Rappel de votre discipline Akhet 2026. "Le temple de l'âme doit être préservé."`);
+    
+    const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&sf=true&output=xml`;
+    
+    window.open(url, '_blank');
   };
 
   return (
@@ -69,12 +91,21 @@ const HealthView: React.FC<Props> = ({ goals, toggleGoal, updateGoalDate, update
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-[#1a1a1a] p-6 rounded-3xl border border-white/5">
           <h3 className="text-[#d4af37] font-bold text-sm mb-6 uppercase tracking-widest flex items-center gap-2"><Droplet size={16} /> Jeûnes 2026</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {fastingGoals.map((g, i) => (
               <div key={g.id} className={`p-4 rounded-2xl border flex flex-col gap-3 transition-all ${g.completed ? 'bg-rose-500/10 border-rose-500/30' : 'bg-black/40 border-white/5'}`}>
                 <div className="flex items-center justify-between">
                   <span className={`text-xs font-black uppercase ${g.completed ? 'text-rose-500' : 'text-gray-400'}`}>{MONTHS[i].name}</span>
-                  <button onClick={() => toggleGoal(g.id)} className={g.completed ? 'text-rose-500' : 'text-gray-600'}>{g.completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}</button>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => exportToGoogleCalendar(g)}
+                      title="Ajouter au calendrier Google"
+                      className="p-1.5 text-gray-600 hover:text-blue-500 transition-colors"
+                    >
+                      <CalendarPlus size={18} />
+                    </button>
+                    <button onClick={() => toggleGoal(g.id)} className={g.completed ? 'text-rose-500' : 'text-gray-600'}>{g.completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}</button>
+                  </div>
                 </div>
                 <select value={g.day || 1} onChange={(e) => updateGoalDay(g.id, parseInt(e.target.value))} disabled={g.completed} className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
                   {days.map(d => <option key={d} value={d}>Jour {d}</option>)}
@@ -97,7 +128,16 @@ const HealthView: React.FC<Props> = ({ goals, toggleGoal, updateGoalDate, update
                        <div className="text-[10px] text-gray-500 uppercase font-black">{MONTHS[g.month-1].name}</div>
                      </div>
                    </div>
-                   {!g.id.startsWith('hlt-') && <button onClick={() => removeGoal(g.id)} className="text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
+                   <div className="flex items-center gap-2">
+                     <button 
+                        onClick={() => exportToGoogleCalendar(g)}
+                        title="Ajouter au calendrier Google"
+                        className="p-1.5 text-gray-800 group-hover:text-blue-500 transition-colors"
+                      >
+                        <CalendarPlus size={16} />
+                      </button>
+                     {!g.id.startsWith('hlt-') && <button onClick={() => removeGoal(g.id)} className="text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>}
+                   </div>
                  </div>
                  {g.id.startsWith('hlt-') && (
                    <input type="date" value={g.date || ''} onChange={(e) => updateGoalDate(g.id, e.target.value)} disabled={g.completed} className="bg-black/60 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-rose-500/50" />

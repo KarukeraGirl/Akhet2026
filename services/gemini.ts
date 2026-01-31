@@ -15,7 +15,7 @@ export const analyzeProgress = async (data: any) => {
 
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
-    contents: prompt,
+    contents: { parts: [{ text: prompt }] },
     config: {
       thinkingConfig: { thinkingBudget: 32768 }
     }
@@ -24,59 +24,15 @@ export const analyzeProgress = async (data: any) => {
   return response.text;
 };
 
-export const extractIsbnFromImage = async (base64Data: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: [
-      {
-        inlineData: {
-          data: base64Data,
-          mimeType: 'image/jpeg'
-        }
-      },
-      {
-        text: "Examine attentivement cette image. Ton objectif est de localiser et d'extraire le numéro ISBN (International Standard Book Number). L'ISBN peut avoir 10 ou 13 chiffres. Il est souvent situé près du code-barres. S'il y a à la fois un ISBN-10 et un ISBN-13, tu DOIS préférer l'ISBN-13. Ne retourne que la séquence numérique de l'ISBN. Si aucun ISBN n'est clairement visible ou déchiffrable, retourne le mot 'null'."
-      }
-    ]
-  });
-
-  const result = response.text?.trim();
-  if (!result || result.toLowerCase() === 'null') return null;
-
-  const cleaned = result.replace(/[^0-9]/g, '');
-
-  if (cleaned.length === 13 && (cleaned.startsWith('978') || cleaned.startsWith('979'))) {
-    return cleaned;
-  }
-  if (cleaned.length === 10) {
-    return cleaned;
-  }
-
-  // Fallback for cases where the model might return a valid ISBN but with extra text.
-  const isbn13Match = result.match(/(978|979)\d{10}/);
-  if (isbn13Match) {
-    return isbn13Match[0];
-  }
-  
-  const isbn10Match = result.match(/\b\d{10}\b/);
-  if (isbn10Match) {
-      return isbn10Match[0];
-  }
-
-  return null;
-};
-
-
 export const getBookDetails = async (isbn: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Instruction stricte pour utiliser des APIs d'images fiables (Open Library ou Google Books)
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Trouve le titre et l'auteur exact pour l'ISBN : ${isbn}. 
-    Pour la coverUrl, utilise PRIORITAIREMENT ce format : https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg. 
-    Vérifie via Google Search si le livre existe bien et si les infos correspondent.`,
+    contents: { parts: [{ text: `Trouve les détails bibliographiques précis (titre, auteur) pour cet identifiant unique : ${isbn}. 
+    Cherche spécifiquement l'édition française si elle existe.
+    Le champ isbn doit contenir l'ISBN-13 complet.
+    Pour l'URL de couverture, privilégie une source stable (Google Books API, Amazon S3, ou https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg).` }] },
     config: {
       tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
@@ -85,17 +41,53 @@ export const getBookDetails = async (isbn: string) => {
         properties: {
           title: { type: Type.STRING },
           author: { type: Type.STRING },
-          coverUrl: { type: Type.STRING, description: "URL de la couverture (OpenLibrary ou Google Books)" },
+          coverUrl: { type: Type.STRING },
+          isbn: { type: Type.STRING },
+          found: { type: Type.BOOLEAN }
         },
-        required: ["title", "author", "coverUrl"]
+        required: ["title", "author", "coverUrl", "found", "isbn"]
       }
     }
   });
 
   try {
-    return JSON.parse(response.text);
+    const data = JSON.parse(response.text);
+    return data.found ? data : null;
   } catch (e) {
-    console.error("Erreur de parsing des détails du livre", e);
+    return null;
+  }
+};
+
+export const searchBookByText = async (query: string) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: { parts: [{ text: `Effectue une recherche bibliographique exhaustive pour l'ouvrage suivant : "${query}".
+    Identifie le titre exact, l'auteur principal et son numéro ISBN-13 correspondant.
+    Si plusieurs éditions existent, choisis la plus récente ou la version française.
+    Si aucune couverture n'est trouvée, utilise systématiquement le format OpenLibrary avec l'ISBN trouvé (https://covers.openlibrary.org/b/isbn/{ISBN}-L.jpg).` }] },
+    config: {
+      tools: [{ googleSearch: {} }],
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          author: { type: Type.STRING },
+          coverUrl: { type: Type.STRING },
+          isbn: { type: Type.STRING },
+          found: { type: Type.BOOLEAN }
+        },
+        required: ["title", "author", "coverUrl", "found", "isbn"]
+      }
+    }
+  });
+
+  try {
+    const data = JSON.parse(response.text);
+    return data.found ? data : null;
+  } catch (e) {
     return null;
   }
 };
@@ -131,7 +123,16 @@ export const getCountryVisuals = async (country: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Donne moi le code pays ISO (2 lettres) et une description d'une image iconique pour le pays : ${country}.`,
+    contents: { parts: [{ text: `Donne moi le code pays ISO (2 lettres), une description d'une image iconique et les coordonnées GPS centrales (lat/lng) pour le lieu : ${country}. 
+    REGLE CRITIQUE : Si le lieu est un territoire français d'outre-mer, NE RENVOIE PAS 'FR'. Renvoie IMPÉRATIVEMENT son code ISO spécifique : 
+    - Guadeloupe: GP
+    - Martinique: MQ
+    - Guyane: GF
+    - Réunion: RE
+    - Mayotte: YT
+    - Nouvelle-Calédonie: NC
+    - Polynésie Française: PF
+    - Saint-Martin: MF` }] },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -139,8 +140,10 @@ export const getCountryVisuals = async (country: string) => {
         properties: {
           code: { type: Type.STRING },
           imageUrl: { type: Type.STRING },
+          lat: { type: Type.NUMBER },
+          lng: { type: Type.NUMBER }
         },
-        required: ["code", "imageUrl"]
+        required: ["code", "imageUrl", "lat", "lng"]
       }
     }
   });
@@ -148,6 +151,6 @@ export const getCountryVisuals = async (country: string) => {
   try {
     return JSON.parse(response.text);
   } catch (e) {
-    return { code: 'FR', imageUrl: 'https://picsum.photos/800/600' };
+    return { code: 'FR', imageUrl: 'https://picsum.photos/800/600', lat: 46.2276, lng: 2.2137 };
   }
 };

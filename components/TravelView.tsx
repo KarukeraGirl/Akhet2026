@@ -16,6 +16,24 @@ interface Props {
   toggleGoal: (id: string) => void;
 }
 
+// Mapping des drapeaux d'identité (URLs SVG robustes)
+const IDENTITY_FLAGS: Record<string, string> = {
+  // Drapeau UPLG/GONG - Vert, Jaune, Rouge avec étoile jaune
+  'GP': 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Guadeloupe_%28UPLG%29.svg',
+  // Drapeau Rouge-Vert-Noir (Officialisé par la CTM)
+  'MQ': 'https://upload.wikimedia.org/wikipedia/commons/6/64/Flag_of_Martinique.svg',
+  // Drapeau de la Guyane (Indépendantiste)
+  'GF': 'https://upload.wikimedia.org/wikipedia/commons/2/29/Flag_of_French_Guiana.svg',
+  // Drapeau Lo Mahavéli
+  'RE': 'https://upload.wikimedia.org/wikipedia/commons/8/8e/Lo_Mahavéli.svg',
+  // Drapeau Local Mayotte
+  'YT': 'https://upload.wikimedia.org/wikipedia/commons/4/4a/Flag_of_Mayotte_%28local%29.svg',
+  // Drapeau FLNKS (Kanaky)
+  'NC': 'https://upload.wikimedia.org/wikipedia/commons/6/66/Flag_of_the_FLNKS.svg',
+  // Drapeau de la Polynésie
+  'PF': 'https://upload.wikimedia.org/wikipedia/commons/d/db/Flag_of_French_Polynesia.svg'
+};
+
 const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoals, addGoal, removeGoal, toggleGoal }) => {
   const [newTripCountry, setNewTripCountry] = useState('');
   const [newTripMotive, setNewTripMotive] = useState<TravelMotive>('Vacances');
@@ -23,9 +41,6 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
   const [newTripDuration, setNewTripDuration] = useState<number>(7);
   const [loading, setLoading] = useState(false);
   
-  const [customTitle, setCustomTitle] = useState('');
-  const [customMonth, setCustomMonth] = useState(1);
-
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
@@ -34,7 +49,6 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
     return trips.filter(t => t.lat !== undefined && t.lng !== undefined);
   }, [trips]);
 
-  // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -45,7 +59,6 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
       attributionControl: false
     });
 
-    // Dark theme tiles
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
     }).addTo(mapRef.current);
@@ -60,7 +73,6 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
     };
   }, []);
 
-  // Update Markers
   useEffect(() => {
     if (!mapRef.current || !markersRef.current) return;
 
@@ -82,7 +94,7 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
       const popupContent = `
         <div style="font-family: 'Quicksand', sans-serif; min-width: 140px; padding: 4px;">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-            <img src="${trip.flagUrl}" style="width: 20px; border-radius: 2px;" />
+            <img src="${trip.flagUrl}" style="width: 24px; height: auto; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);" />
             <b style="color: #d4af37; text-transform: uppercase; font-size: 12px;">${trip.country}</b>
           </div>
           <div style="font-size: 10px; color: #aaa; margin-bottom: 4px;">
@@ -102,7 +114,6 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
       markersRef.current?.addLayer(marker);
     });
 
-    // Fit bounds if markers exist
     if (mapTrips.length > 0 && mapRef.current) {
       const bounds = L.latLngBounds(mapTrips.map(t => [t.lat!, t.lng!]));
       mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 5 });
@@ -112,38 +123,46 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
   const addTrip = async () => {
     if (!newTripCountry) return;
     setLoading(true);
-    const visuals = await getCountryVisuals(newTripCountry);
-    const newTrip: Trip = {
-      id: Date.now().toString(),
-      country: newTripCountry,
-      countryCode: visuals.code || 'FR',
-      flagUrl: `https://flagcdn.com/w160/${(visuals.code || 'fr').toLowerCase()}.png`,
-      bgImageUrl: visuals.imageUrl || `https://picsum.photos/seed/${newTripCountry}/800/400`,
-      status: 'À organiser',
-      motive: newTripMotive,
-      startDate: newTripDate,
-      duration: newTripDuration,
-      comment: '',
-      lat: visuals.lat,
-      lng: visuals.lng
-    };
-    setTrips(prev => [...prev, newTrip]);
-    setNewTripCountry('');
-    setNewTripDate('');
-    setNewTripDuration(7);
-    setNewTripMotive('Vacances');
-    setLoading(false);
-  };
+    try {
+      const visuals = await getCountryVisuals(newTripCountry);
+      let code = (visuals.code || 'FR').toUpperCase();
+      
+      // Sécurité pour la détection des territoires d'outre-mer
+      const countryLower = newTripCountry.toLowerCase().trim();
+      if (countryLower.includes('guadeloupe')) code = 'GP';
+      else if (countryLower.includes('martinique')) code = 'MQ';
+      else if (countryLower.includes('guyane')) code = 'GF';
+      else if (countryLower.includes('réunion')) code = 'RE';
+      else if (countryLower.includes('mayotte')) code = 'YT';
+      else if (countryLower.includes('nouvelle-calédonie') || countryLower.includes('kanaky')) code = 'NC';
+      else if (countryLower.includes('polynésie')) code = 'PF';
 
-  const handleAddCustomGoal = () => {
-    if (!customTitle) return;
-    addGoal({
-      title: customTitle,
-      month: customMonth,
-      category: 'Voyage',
-      type: 'once'
-    });
-    setCustomTitle('');
+      const flagUrl = IDENTITY_FLAGS[code] || `https://flagcdn.com/w160/${code.toLowerCase()}.png`;
+
+      const newTrip: Trip = {
+        id: Date.now().toString(),
+        country: newTripCountry,
+        countryCode: code,
+        flagUrl: flagUrl,
+        bgImageUrl: visuals.imageUrl || `https://picsum.photos/seed/${newTripCountry}/800/400`,
+        status: 'À organiser',
+        motive: newTripMotive,
+        startDate: newTripDate,
+        duration: newTripDuration,
+        comment: '',
+        lat: visuals.lat,
+        lng: visuals.lng
+      };
+      setTrips(prev => [...prev, newTrip]);
+      setNewTripCountry('');
+      setNewTripDate('');
+      setNewTripDuration(7);
+      setNewTripMotive('Vacances');
+    } catch (e) {
+      console.error("Erreur Oracle Voyage", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateStatus = (id: string, status: TravelStatus) => {
@@ -189,7 +208,7 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
 
   return (
     <div className="space-y-10 pb-20 max-w-6xl mx-auto">
-      {/* Interactive World Map Section */}
+      {/* Mappemonde Interactive */}
       <div className="bg-[#1a1a1a] rounded-[2rem] border-2 border-[#d4af37]/20 shadow-2xl overflow-hidden relative group">
         <div className="p-6 border-b border-[#d4af37]/10 flex justify-between items-center bg-black/20">
           <h2 className="egyptian-font text-xl text-[#d4af37] flex items-center gap-3">
@@ -202,28 +221,13 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
 
         <div className="relative aspect-[2/1] md:aspect-[2.5/1] bg-[#0d0d0d]">
           <div ref={mapContainerRef} className="w-full h-full z-10" />
-          
-          {/* Overlay to catch clicks if needed or for branding */}
           <div className="absolute bottom-4 left-4 z-20 pointer-events-none opacity-50">
             <div className="text-[8px] font-black text-[#d4af37] uppercase tracking-[0.3em]">Système de Navigation d'Akhet</div>
           </div>
         </div>
       </div>
 
-      {/* Rewards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {rubricRewards.map(reward => (
-          <div key={reward.id} className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${reward.unlocked ? 'bg-emerald-500/10 border-emerald-500/40 shadow-lg' : 'bg-black/20 border-white/5 opacity-40'}`}>
-            <span className="text-3xl">{reward.icon}</span>
-            <div>
-              <div className={`font-black text-[10px] uppercase tracking-widest ${reward.unlocked ? 'text-emerald-500' : 'text-gray-500'}`}>{reward.title}</div>
-              <div className="text-[9px] text-gray-400 font-medium">{reward.description}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Main Add Trip Section */}
+      {/* Formulaire d'ajout */}
       <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-[#d4af37]/20 shadow-xl overflow-hidden relative">
         <div className="absolute top-0 right-0 p-8 opacity-5"><MapIcon size={120} /></div>
         <div className="relative z-10">
@@ -234,17 +238,17 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
           <div className="space-y-6 max-w-4xl">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Destination</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Destination (Pays ou Territoire)</label>
                 <input 
                   type="text" 
                   value={newTripCountry} 
                   onChange={(e) => setNewTripCountry(e.target.value)} 
-                  placeholder="Pays (ex: Égypte, Japon...)" 
+                  placeholder="Ex: Guadeloupe, Martinique, Japon..." 
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#d4af37] text-white" 
                 />
               </div>
               <div className="w-full md:w-48 space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Motif du Voyage</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Motif</label>
                 <select 
                   value={newTripMotive} 
                   onChange={(e) => setNewTripMotive(e.target.value as TravelMotive)}
@@ -259,7 +263,7 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
 
             <div className="flex flex-col md:flex-row gap-4 items-end">
               <div className="flex-1 space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date de départ (Optionnelle)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date de départ</label>
                 <input 
                   type="date" 
                   value={newTripDate} 
@@ -289,7 +293,7 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
         </div>
       </div>
 
-      {/* Trips Grid */}
+      {/* Grille des voyages */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {trips.map(trip => (
           <div key={trip.id} className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-[#d4af37]/10 flex flex-col shadow-2xl animate-scaleUp group">
@@ -297,7 +301,6 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
               <img src={trip.bgImageUrl} className="w-full h-full object-cover brightness-75 group-hover:scale-105 transition-all duration-700" alt={trip.country} />
               <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a1a] via-transparent to-black/40" />
               
-              {/* Badges on image */}
               <div className="absolute top-4 left-4 flex flex-col gap-2">
                 <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 backdrop-blur-md ${getMotiveColor(trip.motive)}`}>
                   {getMotiveIcon(trip.motive)}
@@ -309,16 +312,23 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
                     {new Date(trip.startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
                   </div>
                 )}
-                {trip.duration > 0 && (
-                  <div className="bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/10 flex items-center gap-2">
-                    <Clock size={12} className="text-blue-400" />
-                    {trip.duration} {trip.duration > 1 ? 'jours' : 'jour'}
-                  </div>
-                )}
               </div>
 
-              <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-md p-2 rounded-xl border border-white/20">
-                <img src={trip.flagUrl} className="w-12 rounded shadow-sm" alt="Flag" />
+              {/* Drapeau haute définition */}
+              <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md p-1 rounded-lg border border-white/10 shadow-2xl">
+                <div className="w-16 h-10 overflow-hidden rounded shadow-inner flex items-center justify-center bg-black/20">
+                  <img 
+                    src={trip.flagUrl} 
+                    className="w-full h-full object-contain" 
+                    alt={`Drapeau de ${trip.country}`}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (!target.src.includes('flagcdn')) {
+                        target.src = `https://flagcdn.com/w160/${trip.countryCode.toLowerCase()}.png`;
+                      }
+                    }} 
+                  />
+                </div>
               </div>
 
               <div className="absolute bottom-4 left-6">
@@ -341,102 +351,27 @@ const TravelView: React.FC<Props> = ({ trips, setTrips, rubricRewards, rubricGoa
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase text-gray-600 ml-1">Départ</label>
-                    <input 
-                      type="date" 
-                      value={trip.startDate} 
-                      onChange={(e) => updateTripField(trip.id, 'startDate', e.target.value)}
-                      className="w-full bg-black/40 border border-white/5 rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-[#d4af37]/40" 
-                    />
-                 </div>
-                 <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase text-gray-600 ml-1">Durée (Jours)</label>
-                    <input 
-                      type="number" 
-                      value={trip.duration} 
-                      onChange={(e) => updateTripField(trip.id, 'duration', parseInt(e.target.value) || 0)}
-                      className="w-full bg-black/40 border border-white/5 rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-[#d4af37]/40" 
-                    />
-                 </div>
-              </div>
-
               <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-gray-600 ml-1">Carnet de Voyage (Notes)</label>
+                <label className="text-[9px] font-black uppercase text-gray-600 ml-1">Carnet de Voyage</label>
                 <textarea 
                   value={trip.comment} 
                   onChange={(e) => updateTripField(trip.id, 'comment', e.target.value)} 
-                  placeholder="Itinéraire, réservations, activités prévues..." 
+                  placeholder="Activités, budget, souvenirs..." 
                   className="w-full h-24 bg-black/40 border border-white/5 rounded-2xl p-4 text-sm text-gray-300 focus:outline-none resize-none focus:border-[#d4af37]/40 transition-colors" 
                 />
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                <div className="flex items-center gap-2">
-                   <select 
-                    value={trip.motive} 
-                    onChange={(e) => updateTripField(trip.id, 'motive', e.target.value as TravelMotive)}
-                    className="bg-transparent text-[10px] font-black uppercase text-gray-500 focus:outline-none cursor-pointer hover:text-[#d4af37]"
-                   >
-                     <option value="Vacances">Vacances</option>
-                     <option value="Sport">Sport</option>
-                     <option value="Autre">Autre</option>
-                   </select>
+                <div className="text-[10px] font-black uppercase text-[#d4af37] flex items-center gap-1">
+                  <Clock size={14}/> {trip.duration} jours prévus
                 </div>
                 <button onClick={() => removeTrip(trip.id)} className="text-red-500/50 hover:text-red-500 flex items-center gap-1 text-[10px] font-black uppercase transition-colors">
-                  <Trash2 size={14} /> Supprimer
+                  <Trash2 size={14} /> Retirer
                 </button>
               </div>
             </div>
           </div>
         ))}
-
-        {trips.length === 0 && (
-          <div className="col-span-full py-20 text-center space-y-4 bg-black/20 rounded-3xl border-2 border-dashed border-white/5">
-            <Compass size={48} className="mx-auto text-gray-800" />
-            <div>
-              <p className="text-gray-600 text-[10px] font-black uppercase tracking-widest">Aucun voyage planifié dans les archives</p>
-              <p className="text-gray-700 text-[8px] font-bold uppercase tracking-widest mt-1">L'horizon vous attend, scribe.</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Additional Goals Section */}
-      <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-emerald-500/20 shadow-xl mt-12">
-        <h3 className="egyptian-font text-xl text-emerald-500 mb-6 flex items-center gap-2">
-          <Trophy size={20} /> Jalons du Voyageur
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          {rubricGoals.map(g => (
-            <div key={g.id} className={`p-4 rounded-xl border flex items-center justify-between group transition-all ${g.completed ? 'bg-green-500/10 border-green-500/30' : 'bg-black/40 border-white/5'}`}>
-              <div className="flex items-center gap-4">
-                <button onClick={() => toggleGoal(g.id)} className={g.completed ? 'text-green-500' : 'text-gray-600 hover:text-[#d4af37]'}>
-                  {g.completed ? <CheckCircle2 size={24}/> : <Circle size={24}/>}
-                </button>
-                <div>
-                  <div className={`font-bold text-sm ${g.completed ? 'line-through text-green-500/60' : 'text-gray-200'}`}>{g.title}</div>
-                  <div className="text-[10px] text-gray-500 uppercase font-black">{MONTHS[g.month-1].name}</div>
-                </div>
-              </div>
-              <button onClick={() => removeGoal(g.id)} className="text-gray-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-col md:flex-row gap-4 items-end pt-6 border-t border-white/5">
-          <div className="flex-1 space-y-2">
-            <label className="text-[10px] font-black uppercase text-gray-600 ml-1">Objectif Additionnel</label>
-            <input value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder="Ex: Acheter matériel camping, Renouveler passeport..." className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 text-white" />
-          </div>
-          <div className="w-full md:w-48 space-y-2">
-            <label className="text-[10px] font-black uppercase text-gray-600 ml-1">Mois Ciblé</label>
-            <select value={customMonth} onChange={(e) => setCustomMonth(parseInt(e.target.value))} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 text-white cursor-pointer">
-              {MONTHS.map((m, i) => <option key={i} value={i+1}>{m.name}</option>)}
-            </select>
-          </div>
-          <button onClick={handleAddCustomGoal} className="bg-emerald-600 text-white font-black px-8 py-3 rounded-xl hover:bg-emerald-500 transition-all uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-600/10">Ajouter</button>
-        </div>
       </div>
     </div>
   );

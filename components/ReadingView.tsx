@@ -1,9 +1,8 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Book, BookStatus, Reward, Goal } from '../types';
-import { getBookDetails, extractIsbnFromImage, searchBookByText } from '../services/gemini';
-import { Plus, Search, Trash2, BookOpen, Camera, Check, Filter, X, Trophy, Circle, CheckCircle2, Loader2, Eye, Sparkles, RefreshCcw, AlertTriangle, AlertCircle, Type as TypeIcon } from 'lucide-react';
-import { MONTHS } from '../constants';
+import { getBookDetails, searchBookByText } from '../services/gemini';
+import { Plus, Search, BookOpen, Check, Circle, CheckCircle2, Loader2, AlertTriangle, AlertCircle, Type as TypeIcon, Info, RefreshCcw, Trash2 } from 'lucide-react';
 
 interface Props {
   books: Book[];
@@ -21,88 +20,44 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Tous' | BookStatus>('Tous');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [detectedIsbn, setDetectedIsbn] = useState<string | null>(null);
-  const [scanError, setScanError] = useState<string | null>(null);
-  
-  // Confirmation state for text search
+  const [error, setError] = useState<{ message: string; type: 'error' | 'warning' | 'info' } | null>(null);
   const [pendingBook, setPendingBook] = useState<any>(null);
-  
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    if (isScannerOpen && videoRef.current) {
-      navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
-      })
-      .then(s => {
-        stream = s;
-        if (videoRef.current) videoRef.current.srcObject = s;
-        setScanError(null);
-      })
-      .catch(err => {
-        console.error("Erreur caméra:", err);
-        setScanError("Accès à la caméra refusé ou non disponible.");
-      });
+  const isValidIsbn13 = (str: string): boolean => {
+    const clean = str.replace(/[^0-9]/g, '');
+    if (clean.length !== 13) return false;
+    if (!clean.startsWith('978') && !clean.startsWith('979')) return false;
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      sum += parseInt(clean[i]) * (i % 2 === 0 ? 1 : 3);
     }
-    return () => {
-      if (stream) stream.getTracks().forEach(track => track.stop());
-    };
-  }, [isScannerOpen]);
-
-  const handleScan = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    setIsCapturing(true);
-    setScanError(null);
-    
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    
-    if (ctx) {
-      ctx.drawImage(video, 0, 0);
-      const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-      try {
-        const result = await extractIsbnFromImage(base64Image);
-        if (result) {
-          setDetectedIsbn(result);
-        } else {
-          setScanError("L'ISBN n'a pas pu être identifié. Assure-toi que le code-barres est bien éclairé et net.");
-        }
-      } catch (err) { 
-        setScanError("Une erreur est survenue lors de l'analyse de l'image.");
-        console.error(err); 
-      }
-    }
-    setIsCapturing(false);
+    const checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit === parseInt(clean[12]);
   };
 
-  const handleAddBookByIsbn = async (e: React.FormEvent | null, directIsbn?: string) => {
+  const handleAddBookByIsbn = async (e: React.FormEvent | null) => {
     if (e) e.preventDefault();
-    const targetIsbn = directIsbn || isbn;
-    if (!targetIsbn) return;
-    
+    const targetIsbn = isbn.replace(/[^0-9X]/g, '');
+    if (!targetIsbn) {
+      setError({ message: "Saisissez un ISBN pour l'archivage.", type: 'warning' });
+      return;
+    }
+    if (targetIsbn.length === 13 && !isValidIsbn13(targetIsbn)) {
+      setError({ message: "L'ISBN-13 semble invalide (clé de contrôle).", type: 'error' });
+      return;
+    }
     setLoading(true);
     setError(null);
-    
     try {
       const details = await getBookDetails(targetIsbn);
       if (details) {
-        confirmAddBook(details);
+        setPendingBook(details);
         setIsbn('');
-        if (isScannerOpen) setIsScannerOpen(false);
       } else {
-        setError("Livre introuvable pour cet ISBN. Vérifie le numéro saisi.");
+        setError({ message: "L'Oracle n'a pas trouvé cet ouvrage par ISBN.", type: 'warning' });
       }
     } catch (err) {
-      setError("Impossible de récupérer les informations du livre.");
+      setError({ message: "Erreur lors de la connexion aux archives.", type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -111,21 +66,19 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
   const handleSearchByText = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!textQuery.trim()) return;
-    
     setLoading(true);
     setError(null);
     setPendingBook(null);
-    
     try {
       const details = await searchBookByText(textQuery);
       if (details) {
         setPendingBook(details);
         setTextQuery('');
       } else {
-        setError("Aucun livre ne semble correspondre à cette recherche.");
+        setError({ message: "Aucun livre trouvé avec ce titre.", type: 'warning' });
       }
     } catch (err) {
-      setError("Erreur lors de la recherche textuelle.");
+      setError({ message: "L'Oracle est silencieux, réessayez.", type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -137,20 +90,18 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
       isbn: details.isbn || '0000000000000', 
       title: details.title, 
       author: details.author,
-      coverUrl: details.coverUrl, 
+      coverUrl: details.coverUrl || '', 
       status: 'À lire', 
       addedAt: new Date().toISOString()
     };
-    
-    setBooks(prev => {
-      if (prev.find(b => b.isbn === newBook.isbn && newBook.isbn !== '0000000000000')) return prev;
-      return [newBook, ...prev];
-    });
+    setBooks(prev => [newBook, ...prev]);
     setPendingBook(null);
+    setError({ message: `"${details.title}" ajouté à vos lectures.`, type: 'info' });
+    setTimeout(() => setError(null), 3000);
   };
 
   const removeBook = (id: string) => {
-    if (window.confirm("Voulez-vous retirer ce livre de votre bibliothèque ?")) {
+    if (window.confirm("Voulez-vous retirer cet ouvrage ?")) {
       setBooks(prev => prev.filter(b => b.id !== id));
     }
   };
@@ -169,7 +120,7 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
 
   return (
     <div className="space-y-8 pb-20 max-w-5xl mx-auto">
-      {/* Dashboard Search (Filter) */}
+      {/* Recherche simple dans la collection existante */}
       <div className="bg-[#1a1a1a] p-4 rounded-3xl border border-[#d4af37]/20 shadow-xl">
         <div className="relative">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -183,10 +134,10 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
         </div>
       </div>
 
-      {/* Manual Add Section */}
+      {/* Ajout d'un nouveau livre */}
       <div className="bg-[#1a1a1a] p-6 rounded-3xl border border-[#d4af37]/20 space-y-6 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
-          <Sparkles size={120} className="text-[#d4af37]" />
+          <BookOpen size={120} className="text-[#d4af37]" />
         </div>
 
         <div>
@@ -195,7 +146,7 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
           </h3>
           
           <div className="space-y-4 relative z-10">
-            {/* Text Search Field */}
+            {/* Recherche textuelle */}
             <form onSubmit={handleSearchByText} className="flex gap-2">
               <div className="relative flex-1">
                 <TypeIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -203,14 +154,14 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
                     type="text" 
                     value={textQuery} 
                     onChange={(e) => setTextQuery(e.target.value)} 
-                    placeholder="Titre ou Auteur (ex: Le Petit Prince...)" 
+                    placeholder="Titre ou Auteur (ex: L'Alchimiste...)" 
                     className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-all" 
                 />
               </div>
               <button 
                 type="submit"
                 disabled={loading || !textQuery.trim()}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 rounded-2xl uppercase text-[10px] tracking-widest disabled:opacity-30 transition-all"
+                className="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 rounded-2xl uppercase text-[10px] tracking-widest disabled:opacity-30"
               >
                 {loading && textQuery ? <Loader2 size={16} className="animate-spin" /> : "Chercher"}
               </button>
@@ -218,57 +169,55 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
 
             <div className="flex items-center gap-3">
                <div className="h-px flex-1 bg-white/5"></div>
-               <span className="text-[8px] font-black text-gray-700 uppercase tracking-widest">Ou via ISBN</span>
+               <span className="text-[8px] font-black text-gray-700 uppercase tracking-widest">Ou par ISBN manuel</span>
                <div className="h-px flex-1 bg-white/5"></div>
             </div>
 
-            {/* ISBN/Camera Field */}
-            <div className="flex gap-2">
+            {/* Saisie ISBN */}
+            <form onSubmit={handleAddBookByIsbn} className="flex gap-2">
               <input 
                   type="text" 
                   value={isbn} 
                   onChange={(e) => setIsbn(e.target.value)} 
-                  placeholder="ISBN (ex: 978...)" 
-                  className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#d4af37]/40 transition-all" 
+                  placeholder="ISBN-13 (ex: 978...)" 
+                  className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-[#d4af37]/40" 
               />
               <button 
-                onClick={() => setIsScannerOpen(true)} 
-                className="p-3 bg-[#d4af37]/20 text-[#d4af37] rounded-2xl hover:bg-[#d4af37]/30 transition-all"
-              >
-                <Camera size={20}/>
-              </button>
-              <button 
-                onClick={() => handleAddBookByIsbn(null)} 
+                type="submit"
                 disabled={loading || !isbn} 
-                className="bg-[#d4af37] text-black font-black px-6 rounded-2xl uppercase text-[10px] tracking-widest disabled:opacity-30 transition-all"
+                className="bg-[#d4af37] text-black font-black px-8 py-3 rounded-2xl uppercase text-[10px] tracking-widest disabled:opacity-30"
               >
-                {loading && isbn ? <Loader2 size={16} className="animate-spin" /> : "Ajouter"}
+                {loading && isbn ? <Loader2 size={16} className="animate-spin" /> : "Indexer"}
               </button>
-            </div>
+            </form>
             
             {error && (
-              <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold uppercase tracking-widest px-2 animate-fadeIn">
-                <AlertTriangle size={14} /> {error}
+              <div className={`flex items-start gap-2 text-[10px] font-bold uppercase tracking-widest px-4 py-3 rounded-xl animate-fadeIn ${
+                error.type === 'error' ? 'text-red-500 bg-red-500/10 border border-red-500/20' : 
+                error.type === 'warning' ? 'text-amber-500 bg-amber-500/10 border border-amber-500/20' : 
+                'text-blue-400 bg-blue-500/10 border border-blue-500/20'
+              }`}>
+                {error.type === 'error' ? <AlertTriangle size={14} /> : <AlertCircle size={14} />} 
+                {error.message}
               </div>
             )}
           </div>
         </div>
 
-        {/* Search Result Confirmation UI */}
+        {/* Confirmation du résultat de recherche */}
         {pendingBook && (
-          <div className="mt-6 p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl animate-scaleUp flex flex-col sm:flex-row gap-6 items-center sm:items-start">
-             <div className="w-24 aspect-[2/3] shrink-0 rounded-lg overflow-hidden border border-white/10 shadow-lg">
-                <img src={pendingBook.coverUrl} className="w-full h-full object-cover" alt="Preview" onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/150x225/111/d4af37?text=?')} />
+          <div className="mt-6 p-5 bg-blue-500/5 border border-blue-500/20 rounded-3xl animate-scaleUp flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+             <div className="w-28 aspect-[2/3] shrink-0 rounded-xl overflow-hidden shadow-2xl bg-black">
+                <BookCover book={pendingBook} size="preview" />
              </div>
              <div className="flex-1 space-y-2 text-center sm:text-left">
-                <h4 className="font-bold text-white text-lg">{pendingBook.title}</h4>
-                <p className="text-sm text-gray-400 font-medium">de <span className="text-[#d4af37]">{pendingBook.author}</span></p>
-                <p className="text-[10px] text-gray-600 font-black uppercase tracking-widest">ISBN: {pendingBook.isbn}</p>
-                <div className="pt-4 flex gap-3 justify-center sm:justify-start">
-                  <button onClick={() => confirmAddBook(pendingBook)} className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
-                    <Check size={14} strokeWidth={4} /> Ajouter à la bibliothèque
+                <h4 className="font-black text-white text-xl uppercase tracking-tighter">{pendingBook.title}</h4>
+                <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">de <span className="text-[#d4af37]">{pendingBook.author}</span></p>
+                <div className="pt-6 flex gap-3 justify-center sm:justify-start">
+                  <button onClick={() => confirmAddBook(pendingBook)} className="bg-green-600 text-white px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2">
+                    <Check size={14} strokeWidth={4} /> Confirmer l'indexation
                   </button>
-                  <button onClick={() => setPendingBook(null)} className="bg-white/5 text-gray-400 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all">
+                  <button onClick={() => setPendingBook(null)} className="bg-white/5 text-gray-500 px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all">
                     Annuler
                   </button>
                 </div>
@@ -277,7 +226,7 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
         )}
       </div>
 
-      {/* Filter Chips */}
+      {/* Filtres de statut */}
       <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
         {(['Tous', 'À lire', 'En cours', 'Lu'] as const).map((status) => (
           <button
@@ -294,120 +243,104 @@ const ReadingView: React.FC<Props> = ({ books, setBooks, rubricRewards, rubricGo
         ))}
       </div>
 
-      {/* Book Grid */}
+      {/* Bibliothèque sacrée */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-8">
         {filteredBooks.map((book) => (
           <div key={book.id} className="flex flex-col gap-3 group animate-fadeIn">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-[#d4af37]/20 shadow-xl bg-black/40">
-              <img 
-                src={book.coverUrl} 
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                alt={book.title} 
-                onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x450/1a1a1a/d4af37?text=Pas+de+Couverture'; }}
-              />
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-[#d4af37]/20 shadow-xl bg-black">
+              <BookCover book={book} />
               
-              <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center p-3 gap-2">
+              <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center p-3 gap-2 backdrop-blur-sm">
                 <button onClick={() => updateStatus(book.id, 'Lu')} className="bg-green-600 hover:bg-green-500 text-white text-[9px] py-2.5 rounded-xl font-black transition-all">TERMINÉ</button>
-                <button onClick={() => updateStatus(book.id, 'En cours')} className="bg-blue-600 hover:bg-blue-500 text-white text-[9px] py-2.5 rounded-xl font-black transition-all">LIRE</button>
+                <button onClick={() => updateStatus(book.id, 'En cours')} className="bg-blue-600 hover:bg-blue-500 text-white text-[9px] py-2.5 rounded-xl font-black transition-all">EN COURS</button>
                 <button onClick={() => removeBook(book.id)} className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white text-[9px] py-2.5 rounded-xl font-black transition-all mt-4 border border-red-600/30">SUPPRIMER</button>
               </div>
               
               {book.status === 'Lu' && (
-                <div className="absolute top-2 right-2 bg-green-500 text-white p-1 rounded-full shadow-lg">
+                <div className="absolute top-2 right-2 bg-green-500 text-white p-1 rounded-full shadow-lg border border-white/20">
                   <Check size={12} strokeWidth={4} />
                 </div>
               )}
               {book.status === 'En cours' && (
-                <div className="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded-full shadow-lg">
+                <div className="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded-full shadow-lg border border-white/20">
                   <RefreshCcw size={12} strokeWidth={4} className="animate-spin" />
                 </div>
               )}
             </div>
             <div className="px-1">
               <h4 className="font-bold text-xs text-gray-200 truncate" title={book.title}>{book.title}</h4>
-              <p className="text-[9px] text-gray-500 font-bold uppercase truncate">{book.author}</p>
+              <p className="text-[9px] text-gray-500 font-bold uppercase truncate tracking-wider">{book.author}</p>
             </div>
           </div>
         ))}
-        {filteredBooks.length === 0 && !loading && (
-          <div className="col-span-full py-20 text-center space-y-4">
-            <BookOpen size={40} className="mx-auto text-gray-800" />
-            <p className="text-gray-600 text-[10px] font-black uppercase tracking-widest">Aucun livre dans cette catégorie</p>
-          </div>
-        )}
       </div>
+    </div>
+  );
+};
 
-      {/* ISBN Scanner Overlay */}
-      {isScannerOpen && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
-          <div className="relative flex-1 bg-black overflow-hidden flex items-center justify-center">
-            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            
-            {/* Guide frame */}
-            <div className="absolute inset-0 border-[40px] border-black/60 pointer-events-none flex items-center justify-center">
-              <div className="w-full max-w-[280px] h-[180px] border-2 border-[#d4af37] rounded-3xl relative shadow-[0_0_50px_rgba(212,175,55,0.2)]">
-                 <div className="absolute left-0 right-0 h-0.5 bg-red-500 shadow-[0_0_10px_red] animate-[scan_2s_infinite]"></div>
-              </div>
-            </div>
-            
-            <button 
-              onClick={() => setIsScannerOpen(false)} 
-              className="absolute top-6 right-6 p-3 bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-white/10 transition-all"
-            >
-              <X size={24} />
-            </button>
+// Composant de couverture robuste
+const BookCover: React.FC<{ book: any; size?: 'preview' | 'normal' }> = ({ book, size = 'normal' }) => {
+  const [errorCount, setErrorCount] = useState(0);
+  const [showTypography, setShowTypography] = useState(false);
+
+  // Fallback direct si l'URL est manifestement vide
+  React.useEffect(() => {
+    if (!book.coverUrl || book.coverUrl.trim() === '') {
+      if (book.isbn && book.isbn !== '0000000000000') {
+         setErrorCount(1); // Tente OpenLibrary si on a un ISBN
+      } else {
+         setShowTypography(true); // Sinon direct texte
+      }
+    }
+  }, [book.coverUrl, book.isbn]);
+
+  const handleError = () => {
+    if (errorCount === 0) {
+      setErrorCount(1); // Tenter le fallback ISBN
+    } else {
+      setShowTypography(true); // Abandonner et montrer le texte
+    }
+  };
+
+  const getUrl = () => {
+    if (errorCount === 1 && book.isbn && book.isbn !== '0000000000000') {
+      return `https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`;
+    }
+    return book.coverUrl;
+  };
+
+  if (showTypography) {
+    return (
+      <div className="w-full h-full bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-[#222] flex flex-col items-center justify-center p-4 text-center border-l-4 border-[#d4af37]/30 shadow-inner relative group/cover">
+        {/* Motif décoratif en arrière-plan */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none bg-egyptian-pattern"></div>
+        <BookOpen size={size === 'preview' ? 32 : 48} className="text-[#d4af37]/20 mb-3" />
+        
+        <div className="relative z-10 flex flex-col gap-3">
+          <div className="egyptian-font text-[#d4af37] text-[10px] md:text-[12px] uppercase leading-tight font-black tracking-tighter px-1 line-clamp-5 drop-shadow-lg">
+            {book.title}
           </div>
-          
-          <div className="p-8 pb-12 w-full flex flex-col gap-6 bg-[#121212] border-t border-[#d4af37]/20">
-            {scanError && (
-              <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl animate-scaleUp">
-                <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-red-400 font-medium">{scanError}</p>
-              </div>
-            )}
-
-            {detectedIsbn ? (
-              <div className="space-y-4 animate-scaleUp">
-                <div className="text-center space-y-1">
-                  <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest">ISBN Détecté</div>
-                  <div className="text-2xl font-black text-[#d4af37] tracking-wider">{detectedIsbn}</div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => {
-                      handleAddBookByIsbn(null, detectedIsbn);
-                    }} 
-                    disabled={loading}
-                    className="flex-1 bg-[#d4af37] text-black py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <Check size={18} />} Confirmer
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setDetectedIsbn(null);
-                      setScanError(null);
-                    }} 
-                    className="flex-1 bg-white/5 text-gray-300 py-4 rounded-2xl font-black uppercase text-xs tracking-widest"
-                  >
-                    Réessayer
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button 
-                onClick={handleScan} 
-                disabled={isCapturing} 
-                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-sm tracking-widest flex items-center justify-center gap-3"
-              >
-                {isCapturing ? <Loader2 size={20} className="animate-spin" /> : <Eye size={20}/>}
-                {isCapturing ? "Analyse..." : "Scanner"}
-              </button>
-            )}
+          <div className="h-0.5 w-12 bg-gradient-to-r from-transparent via-[#d4af37]/50 to-transparent mx-auto"></div>
+          <div className="text-[7px] md:text-[9px] text-gray-400 font-bold uppercase tracking-widest line-clamp-1 italic">
+            {book.author}
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Bordure stylisée type livre de luxe */}
+        <div className="absolute inset-2 border border-[#d4af37]/10 pointer-events-none rounded-lg"></div>
+        <div className="absolute left-1 top-4 bottom-4 w-px bg-white/5"></div>
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={getUrl()} 
+      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+      alt={book.title} 
+      loading="lazy"
+      onError={handleError}
+    />
   );
 };
 
